@@ -2,7 +2,7 @@
 
 Documento de requisitos del proyecto. Es el contexto inicial que se le entrega al agente de IA: define **qué** se construye, no **cómo**. Cada requisito tiene un identificador citable (`DATA-1`, `RLS-3`, `UI-2`, …) para que cada pedido de implementación pueda referenciarlo.
 
-Origen: `Documentación_del_proyecto 001.md` (especificación formal). Este PRD no agrega requisitos: cuando la especificación no define algo, se marca como `[DECISIÓN PENDIENTE]` con una recomendación, y no se implementa hasta confirmarlo.
+Origen: `Documentación_del_proyecto 001.md` (especificación formal). Este PRD no agrega requisitos: cuando la especificación no define algo, se registra la decisión concreta adoptada. Las 14 decisiones que la especificación dejaba abiertas fueron **confirmadas el 2026-10-21** y están listadas en la sección 14.
 
 ---
 
@@ -74,7 +74,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 | `created_at` | `timestamptz` | `not null default now()` | Fecha de creación. |
 | `updated_at` | `timestamptz` | `not null default now()` | Última modificación. |
 
-`DATA-1.1` `[DECISIÓN PENDIENTE]` — `tables.name` "único" es sensible a mayúsculas en PostgreSQL: `Ventas` y `ventas` convivirían. **Recomendación:** índice único sobre `lower(name)`.
+`DATA-1.1` — "Único" se implementa con un **índice único sobre `lower(name)`**, no con `UNIQUE` sobre `name`: `UNIQUE` sobre `text` distingue mayúsculas y permitiría `Ventas` y `ventas` como dos tablas distintas. La validación del panel compara sin distinguir mayúsculas.
 
 ### 4.2 `columns`
 
@@ -86,7 +86,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 | `type` | `column_type` (`text` \| `number` \| `date` \| `boolean`) | `not null` | Tipo de dato: texto, número, fecha o booleano. |
 | `position` | `integer` | `not null` | Orden de aparición. |
 
-`DATA-2.1` `[DECISIÓN PENDIENTE]` — La especificación no define unicidad de nombres ni de posición. **Recomendación:** `unique (table_id, name)` y `unique (table_id, position)`, porque el nombre de la columna es la clave dentro de `rows.data`.
+`DATA-2.1` — Unicidad **por tabla**: `unique (table_id, name)` y `unique (table_id, position)`. El nombre de la columna es la clave dentro de `rows.data`, así que dos columnas con el mismo nombre se pisarían en silencio; y dos columnas con la misma `position` darían un orden ambiguo al renderizar.
 
 ### 4.3 `rows`
 
@@ -99,16 +99,11 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 | `created_at` | `timestamptz` | `not null default now()` | Fecha de creación. |
 | `updated_at` | `timestamptz` | `not null default now()` | Última modificación. |
 
-`DATA-3.1` `[DECISIÓN PENDIENTE — la más importante]` — `search_text` como `text` con índice GIN **no es suficiente**: GIN sobre `text` necesita la extensión `pg_trgm`. Las dos opciones reales:
+`DATA-3.1` — Búsqueda implementada con **`pg_trgm`**: `search_text text` con índice `gin (search_text gin_trgm_ops)` y consultas con `ILIKE '%…%'`. La extensión se habilita con `create extension if not exists pg_trgm`.
 
-| Opción | Cómo busca | Ventaja | Desventaja |
-| --- | --- | --- | --- |
-| A. `search_text text` + `pg_trgm` + `gin (search_text gin_trgm_ops)` | `ILIKE '%palabra%'` | Encuentra coincidencias parciales (`jua` → `Juan`) | Índice más pesado; sin orden por relevancia |
-| B. `search_text tsvector` + `gin (search_text)` | `to_tsquery` / `websearch_to_tsquery` | Búsqueda de texto nativa, con relevancia y sin extensiones | No encuentra prefijos ni partes de palabra |
+Se descartó `tsvector` porque no encuentra prefijos ni partes de palabra: quien busca `jua` esperando `Juan` no obtendría resultados. La contrapartida aceptada es un índice más pesado y sin orden por relevancia, que es razonable en un panel simple. Si más adelante hace falta ranking, se agrega una columna `tsvector` **en paralelo**, sin migrar la existente.
 
-**Recomendación:** opción A (trigram), porque en un panel simple la persona escribe fragmentos, y §6.3 de la especificación habla de coincidencias, no de ranking. La extensión `pg_trgm` se habilita con una migración.
-
-`DATA-3.2` `[DECISIÓN PENDIENTE]` — El trigger de `search_text` debe concatenar "los valores de texto de `data`". **Recomendación:** concatenar **todos** los valores convertidos a texto (números, fechas y booleanos incluidos), para que buscar `2026` encuentre una fecha.
+`DATA-3.2` — El trigger de `search_text` concatena **todos** los valores de `data` convertidos a texto, no solo los de tipo texto: buscar `2026` debe encontrar una fila con una fecha de 2026, y `1500` un número. Los `null` y las claves ausentes se omiten.
 
 ### 4.4 `user_roles`
 
@@ -135,7 +130,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 | Gestionar contenido | Crear, editar y borrar registros en `rows` |
 | Leer y buscar (público) | Consultar `tables`, `columns` y `rows`, usando `search_text` |
 
-`DATA-6.1` `[DECISIÓN PENDIENTE]` — La especificación no define qué pasa con `rows.data` cuando se **borra o renombra una columna** que ya tiene datos. **Recomendación:** borrar la clave del JSONB de todas las filas de esa tabla en la misma operación, y en un renombre migrar la clave; confirmar antes, porque es una operación destructiva sobre datos existentes.
+`DATA-6.1` — Al **borrar** una columna se borra su clave del JSONB de todas las filas de esa tabla; al **renombrar**, se migra la clave en todas las filas. Ambas operaciones son destructivas sobre datos existentes, así que piden **confirmación previa** (`NFR-SEC-7`) y se ejecutan en la misma transacción que el cambio de la definición de la columna. Es el único punto del panel donde se pueden perder datos en silencio, así que vive en el servidor, no en el cliente.
 
 ### 4.7 Índices y optimización
 
@@ -145,7 +140,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 - `INDEX-4` Índice GIN sobre `rows.search_text` (ver `DATA-3.1`).
 - `INDEX-5` Paginación obligatoria en la vista de tabla: **25 filas por página**.
 
-`INDEX-5.1` `[DECISIÓN PENDIENTE]` — 25 es el ejemplo que da la especificación. **Recomendación:** fijar 25 como constante única compartida entre panel público y panel de administración.
+`INDEX-5.1` — Se fijan **25 filas por página**, en una constante única compartida por el panel público y el panel de administración, para que no se desincronicen.
 
 ---
 
@@ -182,6 +177,15 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 
 `AUTH-6` — Un cambio de rol se refleja cuando el token de sesión se renueva, por lo que el usuario debe volver a iniciar sesión.
 
+`AUTH-2.1` — Procedimiento de alta de un administrador (manual, desde el dashboard; no existe registro público):
+
+1. En Supabase, **Authentication → Users → Add user**: crear el usuario con correo y contraseña y marcarlo como confirmado (la confirmación por correo está activada y no hay flujo público de registro).
+2. Copiar el `user_id` del usuario recién creado.
+3. En **SQL Editor**, insertar el rol: `insert into public.user_roles (user_id, role) values ('<user_id>', 'admin');`
+4. El usuario inicia sesión **después** de insertar el rol: el claim `user_role` se agrega al emitir el token, así que una sesión anterior no lo tiene (`AUTH-6`).
+
+Verificación: iniciar sesión y comprobar que el panel muestra las tablas ocultas. Si no las muestra, el rol no está en el token.
+
 ### 5.4 Flujo de autenticación
 
 1. `AUTHFLOW-1` El administrador accede al inicio de sesión con correo y contraseña.
@@ -190,7 +194,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 4. `AUTHFLOW-4` El layout de la zona de administración verifica el rol en el servidor; si no es admin, redirige al inicio de sesión o al panel público.
 5. `AUTHFLOW-5` Al cerrar sesión se limpia la sesión y se redirige al panel público.
 
-`AUTHFLOW-6` `[DECISIÓN PENDIENTE]` — La especificación menciona que el middleware "protege `/admin`" y, a la vez, que el layout verifica el rol. **Recomendación:** el middleware solo refresca la sesión y redirige si no hay sesión (barato, sin consultas); la verificación del **rol** vive en el layout del servidor, que es donde el rol es autoritativo. Duplicar la verificación de rol en el middleware agrega una consulta a la base en cada request.
+`AUTHFLOW-6` — Reparto de responsabilidades: el **middleware** solo refresca la sesión y redirige si no hay sesión (barato, sin consultas a la base); la verificación del **rol** vive en el **layout del servidor** de `/admin`, que es donde el rol es autoritativo. Verificar el rol también en el middleware agregaría una consulta a la base en cada request sin cambiar el resultado.
 
 ### 5.5 Claves y datos sensibles
 
@@ -205,7 +209,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 - `NFR-SEC-7` Confirmación previa al borrado de tablas y registros.
 - `NFR-SEC-8` Copias de seguridad habilitadas **cuando el plan de Supabase lo permita**.
 
-`NFR-SEC-8.1` `[HUECO — corregir expectativa]` — El plan gratuito de Supabase **no incluye copias de seguridad**. `NFR-SEC-8` no es ejecutable hoy. Consecuencia práctica: la única protección de los datos es no hacer migraciones destructivas sin exportar antes (ver `NFR-SEC-9`).
+`NFR-SEC-8.1` — **Corrección a la expectativa de la especificación:** el plan gratuito de Supabase **no incluye copias de seguridad**, así que `NFR-SEC-8` no es ejecutable hoy y no debe quedar como una tarea pendiente. La protección real de los datos es `NFR-SEC-9`: exportar antes de cualquier migración destructiva.
 
 - `NFR-SEC-9` Las migraciones no hacen cambios destructivos (`drop`, borrados masivos) sin una copia previa de la información afectada.
 
@@ -240,7 +244,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 | Administrador | Error | Mensaje comprensible, por ejemplo **"ya existe una tabla con ese nombre"**. |
 | Administrador | Validación | Nombre obligatorio, tipo de columna válido y datos que respeten el tipo definido. |
 
-`UI-3` `[DECISIÓN PENDIENTE]` — La validación de tipos de `data` según `columns.type` es, según la decisión de diseño, responsabilidad de la aplicación (no hay restricción en la base). **Recomendación:** validar en el servidor antes de escribir y **además** en el formulario, y documentar que la API directa con la publishable key no puede escribir de todos modos (RLS lo impide).
+`UI-3` — La validación de los datos según `columns.type` es responsabilidad de la aplicación (el modelo JSONB no impone tipos en la base) y se hace en **dos lugares**: en el **servidor**, antes de escribir, que es la fuente de verdad y lo que cubre una prueba; y en el **formulario**, para dar feedback inmediato. No se implementa con `CHECK` en la base: sería rígido y difícil de mantener sobre JSONB. Nota: esto es integridad de datos, no seguridad; un tercero no puede escribir con la publishable key porque RLS lo impide.
 
 ### 6.3 Búsqueda
 
@@ -248,7 +252,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 - `SRCH-2` **Global:** se ejecuta sobre `rows.search_text` de todas las tablas publicadas. Los resultados se agrupan por tabla, con enlace directo.
 - `SRCH-3` **Generación de `search_text`:** se calcula automáticamente concatenando los valores de `data` al insertar o actualizar una fila, mediante un trigger o función de base de datos que garantice la consistencia.
 
-`SRCH-2.1` `[DECISIÓN PENDIENTE]` — La especificación dice que la búsqueda global "se paginan o se limitan a un máximo por tabla", sin elegir. **Recomendación:** máximo de 5 coincidencias por tabla, con un enlace "ver todas en esta tabla" que lleva a `/tables/[id]?q=…`, y sin paginación global (evita una consulta costosa entre todas las tablas).
+`SRCH-2.1` — La búsqueda global devuelve un **máximo de 5 coincidencias por tabla**, con un enlace "ver todas en esta tabla" que lleva a `/tables/[id]?q=…`, y **no se pagina**. Paginar la búsqueda global obligaría a contar coincidencias de todas las tablas en cada página: es la consulta más cara del panel y no aporta valor en un panel simple.
 
 `SRCH-4` — El buscador de `/tables/[id]` y el de `/` deben usar la misma función de consulta, con el `table_id` como filtro opcional.
 
@@ -344,7 +348,7 @@ Además de su función, el proyecto es una práctica de flujo profesional asisti
 
 `TEST-5` — Además, se realiza una verificación manual de los flujos de inicio y cierre de sesión, lectura pública, escritura del administrador y comportamiento en celular y computadora.
 
-`TEST-6` `[DECISIÓN PENDIENTE]` — No hay, todavía, un runner de pruebas de aplicación (unitarias/integración del frontend). La especificación solo exige pgTAP para RLS. **Recomendación:** agregar Vitest recién cuando exista lógica de aplicación con ramas propias (validación de tipos, armado de consultas); no antes.
+`TEST-6` — No se agrega runner de pruebas de aplicación todavía. La especificación exige pgTAP para RLS, y eso es lo que se implementa en la fase 7. **Vitest entra cuando exista lógica con ramas propias** (validación de tipos, armado de la consulta de búsqueda): antes de eso no habría nada que probar y sería ceremonia vacía.
 
 ---
 
@@ -441,26 +445,26 @@ El proyecto se considera terminado cuando se cumplen **todos**:
 
 ---
 
-## 14. Decisiones pendientes de confirmar
+## 14. Decisiones confirmadas
 
-Ninguna de estas se implementa sin confirmación. Todas están marcadas también en su sección.
+La especificación dejaba estas 14 decisiones abiertas. Fueron **confirmadas el 2026-10-21** y ya están aplicadas en las secciones correspondientes: **no quedan decisiones pendientes**. Cualquier cambio posterior se registra acá con su fecha.
 
-| # | Requisito | Decisión | Recomendación |
-| --- | --- | --- | --- |
-| 1 | `DATA-3.1` | `search_text` como `text` + `pg_trgm` o como `tsvector` | `text` + `pg_trgm` (encuentra fragmentos) |
-| 2 | `DATA-3.2` | El trigger concatena solo texto o todos los tipos | Todos los tipos convertidos a texto |
-| 3 | `DATA-1.1` | Unicidad de `tables.name` sensible a mayúsculas | Índice único sobre `lower(name)` |
-| 4 | `DATA-2.1` | Unicidad de `columns.name` y `columns.position` por tabla | Ambas únicas |
-| 5 | `DATA-6.1` | Qué pasa con `rows.data` al borrar o renombrar una columna | Borrar/migrar la clave en todas las filas, con confirmación |
-| 6 | `AUTHFLOW-6` | Verificación de rol en middleware, en layout o en ambos | Solo en el layout del servidor |
-| 7 | `SRCH-2.1` | Paginación o límite por tabla en la búsqueda global | 5 por tabla, sin paginación global |
-| 8 | `INDEX-5.1` | Filas por página | 25, en una constante compartida |
-| 9 | `UI-3` | Dónde se valida el tipo de `data` | Servidor y formulario |
-| 10 | `TEST-6` | Runner de pruebas de aplicación | Vitest, recién cuando haya lógica con ramas |
-| 11 | `NFR-SEC-8.1` | Copias de seguridad en el plan gratuito | No existen: exportar antes de migraciones destructivas |
-| 12 | `DATA-4`/`ROLE-1` | Procedimiento exacto de alta del administrador | Documentarlo paso a paso cuando se haga (fase 4) |
-| 13 | — | `description` obligatoria o vacía por defecto | `not null default ''` (propuesto en `DATA-1`) |
-| 14 | — | Estado por defecto de una tabla nueva | `hidden` (coherente con la sección 12.2) |
+| # | Requisito | Decisión confirmada |
+| --- | --- | --- |
+| 1 | `DATA-3.1` | Búsqueda con `pg_trgm`: `search_text text` + `gin (search_text gin_trgm_ops)` e `ILIKE` |
+| 2 | `DATA-3.2` | El trigger concatena todos los tipos convertidos a texto |
+| 3 | `DATA-1.1` | Índice único sobre `lower(name)` |
+| 4 | `DATA-2.1` | `unique (table_id, name)` y `unique (table_id, position)` |
+| 5 | `DATA-6.1` | Borrar o migrar la clave en `rows.data` de todas las filas, con confirmación |
+| 6 | `AUTHFLOW-6` | Rol verificado solo en el layout del servidor; el middleware solo refresca la sesión |
+| 7 | `SRCH-2.1` | Búsqueda global: 5 coincidencias por tabla, sin paginación |
+| 8 | `INDEX-5.1` | 25 filas por página, en una constante compartida |
+| 9 | `UI-3` | Validación de tipos en el servidor y en el formulario |
+| 10 | `TEST-6` | Sin runner de aplicación todavía; Vitest cuando haya lógica con ramas |
+| 11 | `NFR-SEC-8.1` | El plan gratuito no tiene copias de seguridad: exportar antes de migraciones destructivas |
+| 12 | `ROLE-1` | Procedimiento de alta documentado en `AUTH-2.1` (sección 5.3) |
+| 13 | `DATA-1` | `description` `not null default ''` |
+| 14 | `DATA-1` | Estado por defecto de una tabla nueva: `hidden` |
 
 ---
 
