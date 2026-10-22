@@ -37,7 +37,7 @@ export function RowForm({
   const scope = rowId ?? 'nuevo'
 
   return (
-    <form action={formAction} className="flex flex-col gap-3">
+    <form action={formAction} autoComplete="off" className="flex flex-col gap-3">
       <input type="hidden" name="tableId" value={tableId} />
       {rowId ? <input type="hidden" name="rowId" value={rowId} /> : null}
 
@@ -62,8 +62,12 @@ export function RowForm({
             )
           }
 
-          const inputType =
-            column.type === 'number' ? 'number' : column.type === 'date' ? 'date' : 'text'
+          // Los numeros se piden como texto: con type="number" el navegador
+          // bloquea las letras sin explicar nada y acepta "e" (notacion
+          // cientifica), asi que el mensaje de validacion del servidor nunca se
+          // llega a ver. Con inputMode el teclado del celular sigue siendo
+          // numerico.
+          const inputType = column.type === 'date' ? 'date' : 'text'
 
           return (
             <div key={column.id} className="flex flex-col gap-1">
@@ -72,7 +76,8 @@ export function RowForm({
                 id={fieldId}
                 name={column.name}
                 type={inputType}
-                step={column.type === 'number' ? 'any' : undefined}
+                inputMode={column.type === 'number' ? 'decimal' : undefined}
+                autoComplete="off"
                 defaultValue={
                   current === null || current === undefined ? '' : String(current)
                 }

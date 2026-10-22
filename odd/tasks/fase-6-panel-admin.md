@@ -36,3 +36,8 @@ Entrega: `/admin/dashboard` con todas las tablas (publicadas y ocultas) y accion
 **L4** — `npm run build` exit 0 en 27s con las 10 rutas: `ƒ /`, `○ /_not-found`, `ƒ /admin/dashboard`, `ƒ /admin/tables/[id]/edit`, `ƒ /admin/tables/[id]/rows`, `ƒ /admin/tables/new`, `ƒ /api/supabase-check`, `ƒ /auth/callback`, `ƒ /login`, `ƒ /tables/[id]` y `ƒ Proxy (Middleware)`. Es la unica forma de verificar las rutas de `/admin`, que por HTTP responden `307` sin sesion.
 
 **L5** — `npx tsc --noEmit` y `npm run lint` limpios.
+
+**L6** — Prueba manual del usuario: 5 de 7 puntos bien (dashboard, borrar duplicado, crear registro, **renombrar columna con datos → los valores sobreviven**, nombre duplicado, borrar tabla). Dos defectos de interfaz encontrados y corregidos:
+
+1. **`type="number"` bloquea las letras y acepta `e`** (notación científica). El navegador filtraba el input antes de enviarlo, así que el mensaje del servidor (“Edad” debe ser un número) **nunca se veía**. Ahora los números se piden con `type="text"` + `inputMode="decimal"`: se puede escribir cualquier cosa y responde la validación del servidor, sin perder el teclado numérico en celular.
+2. **Autocompletado en los campos de texto**: el navegador sugería nombres de archivos usados antes (`01_extenciones.sql`, `02_location`…) porque el input se llama `name`. Se agregó `autoComplete="off"` en los `<form>` y en los inputs de nombre, descripción y columnas.

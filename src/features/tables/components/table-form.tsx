@@ -91,6 +91,7 @@ export function TableForm({ tableId, name, description, status, columns: initial
   return (
     <form
       action={formAction}
+      autoComplete="off"
       onSubmit={(event) => {
         if (!confirmDestructiveChange()) {
           event.preventDefault()
@@ -104,7 +105,15 @@ export function TableForm({ tableId, name, description, status, columns: initial
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="name">Nombre</Label>
-          <Input id="name" name="name" defaultValue={name} required maxLength={80} disabled={isPending} />
+          <Input
+            id="name"
+            name="name"
+            defaultValue={name}
+            required
+            maxLength={80}
+            disabled={isPending}
+            autoComplete="off"
+          />
         </div>
 
         <div className="flex flex-col gap-2">
@@ -130,6 +139,7 @@ export function TableForm({ tableId, name, description, status, columns: initial
           defaultValue={description}
           maxLength={200}
           disabled={isPending}
+          autoComplete="off"
         />
       </div>
 
@@ -153,6 +163,7 @@ export function TableForm({ tableId, name, description, status, columns: initial
                   onChange={(event) => update(index, { name: event.target.value })}
                   disabled={isPending}
                   maxLength={60}
+                  autoComplete="off"
                 />
               </div>
 
