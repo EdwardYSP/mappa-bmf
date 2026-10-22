@@ -155,6 +155,16 @@ export type Database = {
     Functions: {
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       is_admin: { Args: never; Returns: boolean }
+      save_table_with_columns: {
+        Args: {
+          p_columns: Json
+          p_description: string
+          p_name: string
+          p_status: Database["public"]["Enums"]["table_status"]
+          p_table_id: string
+        }
+        Returns: string
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
