@@ -1,16 +1,27 @@
 import Link from 'next/link'
+import { StatusPage } from '@/components/status-page'
 
-/** S2: la tabla no existe o esta oculta. */
+/**
+ * S2: se muestra para una tabla que no existe o que esta oculta, y para
+ * cualquier ruta que no exista. Next responde 404 real cuando la pagina se
+ * resuelve antes de empezar a transmitir (por eso no hay loading.tsx arriba).
+ */
 export default function NotFound() {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
-      <h1 className="text-2xl font-semibold">No encontramos esa tabla</h1>
-      <p className="text-sm text-muted-foreground">
-        Puede que no exista o que no esté publicada.
-      </p>
-      <Link href="/" className="text-sm underline underline-offset-4">
-        Volver al inicio
+    <StatusPage
+      code="404"
+      title="No encontramos esa página"
+      description="Puede que la tabla no exista, que no esté publicada o que la dirección esté mal escrita."
+    >
+      <Link
+        href="/"
+        className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90"
+      >
+        Ver las tablas públicas
       </Link>
-    </main>
+      <Link href="/login" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
+        Soy administrador
+      </Link>
+    </StatusPage>
   )
 }

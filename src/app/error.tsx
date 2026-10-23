@@ -1,16 +1,41 @@
 'use client'
 
-/** S5: mensaje amable, sin detalles tecnicos del error. */
-export default function Error({ reset }: { error: Error; reset: () => void }) {
+import Link from 'next/link'
+import { errorDigest, StatusPage } from '@/components/status-page'
+
+/**
+ * S5: error de cualquier pagina. El prop se llama `retry` en Next 16
+ * (antes `reset`): llamar al nombre viejo rompia el boton, porque quedaba
+ * undefined. `error` llega como desconocido: hay que angostarlo antes de leerlo.
+ */
+export default function Error({
+  error,
+  retry,
+}: {
+  error: unknown
+  retry: () => void
+}) {
+  const digest = errorDigest(error)
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
-      <h1 className="text-2xl font-semibold">Algo salió mal</h1>
-      <p className="text-sm text-muted-foreground">
-        No pudimos cargar la información. Probá de nuevo en unos segundos.
-      </p>
-      <button type="button" onClick={reset} className="text-sm underline underline-offset-4">
+    <StatusPage
+      code="500"
+      title="Algo se rompió de nuestro lado"
+      description="No pudimos cargar la información. Probá de nuevo; si el problema sigue, pasale el código de abajo a quien mantiene el sitio."
+    >
+      <button
+        type="button"
+        onClick={() => retry()}
+        className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90"
+      >
         Reintentar
       </button>
-    </main>
+      <Link href="/" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
+        Volver al inicio
+      </Link>
+      {digest ? (
+        <p className="w-full pt-2 font-mono text-xs text-muted-foreground">Código: {digest}</p>
+      ) : null}
+    </StatusPage>
   )
 }
